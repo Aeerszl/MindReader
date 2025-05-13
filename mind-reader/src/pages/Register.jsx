@@ -5,7 +5,7 @@ import axios from "axios";
 const API_URL = "http://localhost:5000/api/auth"; // Backend adresiniz
 
 export default function Register() {
-  const [form, setForm] = useState({ email: "", password: "", confirmPassword: "" });
+  const [form, setForm] = useState({ email: "", username: "", password: "", confirmPassword: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -37,10 +37,10 @@ export default function Register() {
     
     setLoading(true);
     
-    try {
-      // Gerçek API çağrısı
+    try {      // Gerçek API çağrısı
       const response = await axios.post(`${API_URL}/register`, {
         email: form.email,
+        username: form.username,
         password: form.password
       });
       
@@ -91,8 +91,7 @@ export default function Register() {
           </div>
         )}
         
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2">
+        <form onSubmit={handleSubmit} className="space-y-6">          <div className="space-y-2">
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
               E-posta
             </label>
@@ -104,6 +103,21 @@ export default function Register() {
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="username" className="block text-sm font-medium text-gray-700">
+              Kullanıcı Adı
+            </label>
+            <input
+              id="username"
+              type="text"
+              required
+              placeholder="Kullanıcı adınızı girin"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
             />
           </div>
           

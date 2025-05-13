@@ -18,9 +18,8 @@ export default function Login() {
     if (success && countdown > 0) {
       timer = setTimeout(() => {
         setCountdown(countdown - 1);
-      }, 1000);
-    } else if (success && countdown === 0) {
-      navigate("/Home");
+      }, 1000);    } else if (success && countdown === 0) {
+      navigate("/home");
     }
     return () => clearTimeout(timer);
   }, [success, countdown, navigate]);

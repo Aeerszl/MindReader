@@ -3,7 +3,7 @@
 //Home.jsx
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { AlertCircle, Clock, History, RefreshCw, Shield } from 'lucide-react';
+import { AlertCircle, Clock, History, RefreshCw, Shield, Globe, ChevronDown, Languages } from 'lucide-react';
 
 const EmotionAnalysis = () => {
   const [analysisHistory, setAnalysisHistory] = useState([]);
@@ -14,6 +14,15 @@ const EmotionAnalysis = () => {
   const [translatedText, setTranslatedText] = useState('');
   const [apiStatus, setApiStatus] = useState({ translation: 'kontrol ediliyor...', sentiment: 'kontrol ediliyor...' });
   const [statusChecking, setStatusChecking] = useState(false);
+  const [language, setLanguage] = useState('auto'); // Varsayılan olarak otomatik algılama
+  const [languageMenuOpen, setLanguageMenuOpen] = useState(false); // Dil menüsü durumu
+
+  // Desteklenen diller
+  const languages = [
+    { code: 'auto', name: 'Otomatik Algıla', flag: '🌐' },
+    { code: 'tr', name: 'Türkçe', flag: '🇹🇷' },
+    { code: 'en', name: 'İngilizce', flag: '🇬🇧' }
+  ];
 
   const apiBaseUrl = 'http://localhost:5000/api/analysis';
   const API_TIMEOUT = 60000; // 60 saniye
@@ -25,6 +34,20 @@ const EmotionAnalysis = () => {
   useEffect(() => {
     checkApiStatus();
   }, []);
+
+  // Dil menüsü dışında bir yere tıklandığında menüyü kapat
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (languageMenuOpen && !event.target.closest('.language-menu')) {
+        setLanguageMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [languageMenuOpen]);
   
   const checkApiStatus = async () => {
     setStatusChecking(true);
@@ -50,7 +73,6 @@ const EmotionAnalysis = () => {
       setStatusChecking(false);
     }
   };
-
   const analyzeText = async () => {
     if (!text.trim()) {
       setError('Lütfen analiz edilecek bir metin giriniz.');
@@ -60,6 +82,7 @@ const EmotionAnalysis = () => {
     setLoading(true);
     setError(null);
     setEmotions(null);
+    setTranslatedText('');
 
     // Zaman aşımını kontrol için
     const timeoutId = setTimeout(() => {
@@ -76,14 +99,16 @@ const EmotionAnalysis = () => {
       // Timeout'tan 5 saniye önce isteği iptal et
       setTimeout(() => controller.abort(), API_TIMEOUT - 5000);
 
-      const token = getAuthToken();
-      const response = await fetch(`${apiBaseUrl}`, { // '/analyze' yerine '/' endpoint'ini kullan
+      const token = getAuthToken();      const response = await fetch(`${apiBaseUrl}`, { 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` // Token'ı ekle
+          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ text: text }),
+        body: JSON.stringify({ 
+          text: text,
+          language: language // Seçilen dil bilgisini gönder
+        }),
         signal: signal
       });
 
@@ -161,31 +186,96 @@ const EmotionAnalysis = () => {
     }
   };
 
+  // Seçilen dilin bilgilerini getir
+  const getSelectedLanguage = () => {
+    return languages.find(lang => lang.code === language) || languages[0];
+  };
+
+  // Enter tuşu ile analiz etme
+  const handleKeyDown = (e) => {
+    // Enter tuşuna basıldığında ve Shift tuşu basılı değilse analiz et
+    if (e.key === 'Enter' && !e.shiftKey && !loading) {
+      e.preventDefault(); // Varsayılan davranışı engelle (yeni satır ekleme)
+      
+      // Metin varsa analiz yap
+      if (text.trim()) {
+        analyzeText();
+      }
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-6">
       <h1 className="text-2xl font-bold mb-6">Duygu Analizi Uygulaması</h1>
-   
-
-      <div className="mb-8">
+       <div className="mb-8">
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-sm font-medium text-gray-700">Analiz edilecek metin:</label>
+          
+          {/* Dil seçici dropdown */}
+          <div className="relative language-menu">
+            <button 
+              className="flex items-center text-sm bg-white border border-gray-300 rounded-md px-3 py-1.5 shadow-sm
+                        hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onClick={() => setLanguageMenuOpen(!languageMenuOpen)}
+              aria-label="Dil seçimi"
+              title="Metin dilini seçin"
+            >
+              <Globe className="w-4 h-4 mr-1.5 text-gray-500" />
+              <span className="mr-1">{getSelectedLanguage().flag}</span>
+              <span>{getSelectedLanguage().name}</span>
+              <ChevronDown className="w-4 h-4 ml-1.5 text-gray-500" />
+            </button>
+            
+            {languageMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-md shadow-lg z-10
+                             border border-gray-200 py-1">
+                {languages.map(lang => (
+                  <button
+                    key={lang.code}
+                    className={`flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100
+                              ${language === lang.code ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
+                    onClick={() => {
+                      setLanguage(lang.code);
+                      setLanguageMenuOpen(false);
+                    }}
+                  >
+                    <span className="mr-2 text-lg">{lang.flag}</span>
+                    <span>{lang.name}</span>
+                    {language === lang.code && (
+                      <svg className="w-4 h-4 ml-auto text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        
         <textarea
           className="w-full p-4 border rounded-lg shadow-sm min-h-[150px]"
-          placeholder="Nasıl hissettiğinizi buraya yazın..."
+          placeholder={language === 'tr' ? 'Nasıl hissettiğinizi buraya yazın...' : 
+                       language === 'en' ? 'Write how you feel here...' : 
+                       'Nasıl hissettiğinizi buraya yazın... / Write how you feel here...'}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={handleKeyDown}
         />
-        <div className="flex flex-wrap items-center gap-2 mt-4">
+          <div className="flex flex-wrap items-center gap-2 mt-4">
           <button
-            className={`px-6 py-2 ${loading ? 'bg-gray-500' : 'bg-blue-600'} text-white rounded-lg`}
+            className={`px-6 py-2 ${loading ? 'bg-gray-500' : 'bg-blue-600'} text-white rounded-lg hover:bg-blue-700 transition-colors duration-200`}
             onClick={analyzeText}
             disabled={loading}
           >
             {loading ? 'Analiz Ediliyor...' : 'Analiz Et'}
           </button>
           
+         
           {error && (
             <button
               onClick={retryAnalysis}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center"
+              className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center hover:bg-green-700 transition-colors duration-200"
             >
               <RefreshCw className="w-4 h-4 mr-1" /> Yeniden Dene
             </button>
@@ -224,10 +314,14 @@ const EmotionAnalysis = () => {
       {emotions && (
         <div className="bg-white p-6 rounded-lg shadow-lg mb-8">
           <h3 className="text-xl font-bold mb-4">Duygu Analizi Sonuçları</h3>
-          
-          {translatedText && (
+            {translatedText && (
             <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-              <p className="text-sm text-gray-700 font-medium">İngilizce çevirisi:</p>
+              <div className="flex items-center mb-1">
+                <p className="text-sm text-gray-700 font-medium">İngilizce çevirisi:</p>
+                <span className="ml-2 text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full">
+                  {getSelectedLanguage().flag} {getSelectedLanguage().code === 'auto' ? 'Otomatik Algılandı' : getSelectedLanguage().name}
+                </span>
+              </div>
               <p className="italic">&ldquo;{translatedText}&rdquo;</p>
             </div>
           )}

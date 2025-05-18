@@ -4,6 +4,8 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { AlertCircle, Clock, History, RefreshCw, Shield, Globe, ChevronDown, Languages } from 'lucide-react';
+import { getUserAnalyses } from '../services/analysisService'; // Import getUserAnalyses
+import { getToken } from '../utils/tokenHelper';
 
 const EmotionAnalysis = () => {
   const [analysisHistory, setAnalysisHistory] = useState([]);
@@ -25,15 +27,86 @@ const EmotionAnalysis = () => {
   ];
 
   const apiBaseUrl = 'http://localhost:5000/api/analysis';
-  const API_TIMEOUT = 60000; // 60 saniye
-
-  // Token'ı localStorage'dan al
-  const getAuthToken = () => localStorage.getItem('token');
+  const API_TIMEOUT = 60000; // 60 saniye  // Token'ı tokenHelper'dan al
+  const getAuthToken = () => getToken();
 
   // Bileşen yüklendiğinde API durumunu kontrol et
   useEffect(() => {
     checkApiStatus();
+    fetchUserAnalysis(); // Kullanıcının analizlerini getir
   }, []);
+  // Kullanıcının analiz verilerini getir
+  const fetchUserAnalysis = async () => {
+    try {
+      const response = await getUserAnalyses();
+      if (response.data && response.data.length > 0) {
+        // API'den gelen analizleri uygun formata dönüştür
+        const formattedAnalyses = response.data.map(analysis => {
+          // API'den gelen veri formatını frontend formatına dönüştür
+          let emotionData = [];
+          
+          // İki farklı veri formatını ele al (User modeli ve Analysis modeli)
+          if (analysis.sentiment) {
+            // Analysis modelinden gelen veri
+            if (typeof analysis.sentiment === 'object') {
+              let emotion = analysis.sentiment.label;
+              
+              // Duygu etiketlerini Türkçeleştir
+              if (emotion === 'NEGATIVE' || emotion === 'LABEL_0' || emotion === '1 star' || emotion === '2 stars') 
+                emotion = 'Negatif';
+              else if (emotion === 'NEUTRAL' || emotion === 'LABEL_1' || emotion === '3 stars') 
+                emotion = 'Nötr';
+              else if (emotion === 'POSITIVE' || emotion === 'LABEL_2' || emotion === '4 stars' || emotion === '5 stars') 
+                emotion = 'Pozitif';
+              else 
+                emotion = emotion || 'Belirsiz';
+                
+              emotionData.push({
+                emotion: emotion,
+                score: analysis.sentiment.score ? parseFloat((analysis.sentiment.score * 100).toFixed(1)) : 0,
+              });
+            } 
+            // User modeli analyses dizisinden gelen veri (string olarak kaydedilmiş JSON)
+            else if (typeof analysis.sentiment === 'string') {
+              try {
+                const sentimentObj = JSON.parse(analysis.sentiment);
+                
+                // Duygu skorlarını durumlara dönüştür
+                if (sentimentObj) {
+                  const emotions = [
+                    { name: 'Negatif', score: sentimentObj.negative * 100 },
+                    { name: 'Nötr', score: sentimentObj.neutral * 100 },
+                    { name: 'Pozitif', score: sentimentObj.positive * 100 }
+                  ];
+                  
+                  emotionData = emotions.map(item => ({
+                    emotion: item.name,
+                    score: parseFloat(item.score.toFixed(1))
+                  }));
+                }
+              } catch (e) {
+                console.error('Sentiment JSON parse hatası:', e);
+              }
+            }
+          }
+          
+          return {
+            id: analysis._id, // MongoDB doküman ID'si
+            text: analysis.text,
+            translatedText: analysis.translatedText || '',
+            result: emotionData,
+            timestamp: new Date(analysis.createdAt).toLocaleString('tr-TR'),
+          };
+        });
+        
+        // Son analizleri göster (en yeni en üstte)
+        setAnalysisHistory(formattedAnalyses.slice(0, 10));
+      }
+    } catch (err) {
+      console.error("Kullanıcı analizleri getirilirken hata oluştu:", err);
+      // Hata durumunda sessizce devam et, kritik değil
+    }
+  };
 
   // Dil menüsü dışında bir yere tıklandığında menüyü kapat
   useEffect(() => {
@@ -117,10 +190,7 @@ const EmotionAnalysis = () => {
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || `HTTP hata! Status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log("API yanıtı:", data);
+      }      const data = await response.json();
 
       setTranslatedText(data.translatedText || '');
 
@@ -145,19 +215,11 @@ const EmotionAnalysis = () => {
           emotion: emotion,
           score: parseFloat((item.score * 100).toFixed(1)),
         };
-      });
+      });      setEmotions(emotionData);
 
-      setEmotions(emotionData);
-
-      const newAnalysis = {
-        id: Date.now(),
-        text: text,
-        translatedText: data.translatedText || '',
-        result: emotionData,
-        timestamp: new Date().toLocaleString('tr-TR'),
-      };
-
-      setAnalysisHistory(prev => [newAnalysis, ...prev.slice(0, 9)]);
+      // Analiz verileri geldiğinde, kullanıcının güncel analizlerini sunucudan getir
+      // Bu, sunucu tarafında bir veri tutarsızlığı olmasını önler ve her kullanıcı kendi verilerini görür
+      fetchUserAnalysis();
     } catch (err) {
       console.error("Analiz hatası:", err);
       clearTimeout(timeoutId);
@@ -337,12 +399,10 @@ const EmotionAnalysis = () => {
             </ResponsiveContainer>
           </div>
         </div>
-      )}
-
-      {analysisHistory.length > 0 && (
+      )}      {analysisHistory.length > 0 && (
         <div className="mb-8">
-          <h3 className="text-xl font-bold mb-4">Son Analizler</h3>
-          <div className="space-y-2">
+          <h3 className="text-xl font-bold mb-4">Son Analizleriniz</h3>
+          <div className="space-y-2 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
             {analysisHistory.map(item => (
               <div key={item.id} className="p-3 bg-white rounded-lg shadow border">
                 <div className="flex justify-between">
@@ -350,11 +410,17 @@ const EmotionAnalysis = () => {
                   <p className="text-sm text-gray-500">{item.timestamp}</p>
                 </div>
                 <div className="flex gap-2 mt-2">
-                  {item.result.map((emotion, i) => (
-                    <span key={i} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                      {emotion.emotion}: {emotion.score}%
+                  {item.result && item.result.length > 0 ? (
+                    item.result.map((emotion, i) => (
+                      <span key={i} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                        {emotion.emotion}: {emotion.score}%
+                      </span>
+                    ))
+                  ) : (
+                    <span className="px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded-full">
+                      Duygu verisi yok
                     </span>
-                  ))}
+                  )}
                 </div>
               </div>
             ))}

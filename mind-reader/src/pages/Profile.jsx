@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Camera, Save, Key, X } from 'lucide-react';
 import { getUserInfo, updateProfile, changePassword } from '../services/authService';
+import { getToken } from '../utils/tokenHelper';
 
 const Profile = () => {
   const [user, setUser] = useState({
@@ -63,10 +64,8 @@ const Profile = () => {
       } catch (error) {
         console.error('API\'den kullanıcı bilgisi alınırken hata:', error);
       }
-    };
-    
-    // Token varsa API çağrısı yap
-    if (localStorage.getItem('token')) {
+    };    // Token varsa API çağrısı yap
+    if (getToken()) {
       fetchUserInfo();
     }
   }, []);
@@ -124,18 +123,20 @@ const Profile = () => {
       };
       reader.readAsDataURL(file);
     }
-  };
-
-  const handleImageUpload = async () => {
-    if (previewImage) {
+  };  const handleImageUpload = async () => {
+    if (previewImage && selectedFile) {
       try {
         setLoading(true);
+        
+        // Base64 formatındaki resmi direkt API'ye gönder
         // API'ye profil fotoğrafı güncellemesini gönder
         const response = await updateProfile({ profileImage: previewImage });
-        
-        if (response && response.data && response.data.user) {
+          if (response && response.data && response.data.user) {
           // localStorage'ı güncelle
           localStorage.setItem('user', JSON.stringify(response.data.user));
+          
+          // Header bileşenini haberdar etmek için storage event'i tetikle
+          window.dispatchEvent(new Event('storage'));
           
           // Başarı mesajı göster
           alert('Profil fotoğrafı başarıyla güncellendi.');
@@ -159,10 +160,12 @@ const Profile = () => {
         // UI'ı güncelle
         setPreviewImage(null);
         setSelectedFile(null);
-        
-        // LocalStorage'ı güncelle
+          // LocalStorage'ı güncelle
         if (response.data.user) {
           localStorage.setItem('user', JSON.stringify(response.data.user));
+          
+          // Header bileşenini haberdar etmek için storage event'i tetikle
+          window.dispatchEvent(new Event('storage'));
         }
         
         // Başarı mesajı göster
@@ -174,9 +177,7 @@ const Profile = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handlePasswordChange = async (e) => {
+  };  const handlePasswordChange = async (e) => {
     e.preventDefault();
     
     // Şifre kontrolü
@@ -197,28 +198,34 @@ const Profile = () => {
     
     setLoading(true);
     setPasswordMessage({ text: 'Şifre değiştiriliyor...', type: 'info' });
-    
-    try {
+      try {
       // API'ye şifre değiştirme isteği gönder
-      await changePassword({
+      const response = await changePassword({
         currentPassword: passwords.currentPassword,
         newPassword: passwords.newPassword
       });
       
-      // Başarılı ise form alanlarını temizle
-      setPasswordMessage({ text: 'Şifreniz başarıyla güncellendi!', type: 'success' });
-      setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      
-      console.log('Şifre başarıyla değiştirildi');
-      
+      if (response && response.data) {
+        // Başarılı ise form alanlarını temizle
+        setPasswordMessage({ text: 'Şifreniz başarıyla güncellendi!', type: 'success' });
+        setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        console.log('Şifre başarıyla değiştirildi');
+      }
     } catch (error) {
       console.error('Şifre değiştirme hatası:', error);
       
-      // Hata mesajını göster
-      setPasswordMessage({ 
-        text: error.message || 'Şifre değiştirme sırasında bir hata oluştu', 
-        type: 'error' 
-      });
+      // API'den gelen hata mesajını göster
+      if (error.response && error.response.data && error.response.data.message) {
+        setPasswordMessage({ 
+          text: error.response.data.message, 
+          type: 'error' 
+        });
+      } else {
+        setPasswordMessage({ 
+          text: 'Şifre değiştirilirken bir hata oluştu', 
+          type: 'error' 
+        });
+      }
     } finally {
       setLoading(false);
     }

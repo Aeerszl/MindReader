@@ -1,25 +1,27 @@
 //authService.js
 import axios from "axios";
+import { getToken } from "../utils/tokenHelper";
 
-const API_URL = "http://localhost:5000/api";
+const API_URL = "http://localhost:5000/api/auth";
+const USER_API_URL = "http://localhost:5000/api/user";
 
-// Auth endpoints
-export const register = (userData) => axios.post(`${API_URL}/auth/register`, userData);
-export const login = (userData) => axios.post(`${API_URL}/auth/login`, userData);
+// Auth işlemleri
+export const register = (userData) => axios.post(`${API_URL}/register`, userData);
+export const login = (userData) => axios.post(`${API_URL}/login`, userData);
 
-// User endpoints
+// Kullanıcı profil işlemleri
 export const getUserInfo = () => {
-  const token = localStorage.getItem('token');
-  return axios.get(`${API_URL}/user/info`, {
+  const token = getToken();
+  return axios.get(`${USER_API_URL}/info`, {
     headers: {
       Authorization: `Bearer ${token}`
     }
   });
 };
 
-export const updateProfile = (profileData) => {
-  const token = localStorage.getItem('token');
-  return axios.put(`${API_URL}/user/updateProfile`, profileData, {
+export const updateProfile = (userData) => {
+  const token = getToken();
+  return axios.put(`${USER_API_URL}/updateProfile`, userData, {
     headers: {
       Authorization: `Bearer ${token}`
     }
@@ -27,10 +29,20 @@ export const updateProfile = (profileData) => {
 };
 
 export const changePassword = (passwordData) => {
-  const token = localStorage.getItem('token');
-  return axios.post(`${API_URL}/auth/change-password`, passwordData, {
+  const token = getToken();
+  return axios.post(`${API_URL}/change-password`, passwordData, {
     headers: {
       Authorization: `Bearer ${token}`
+    }
+  });
+};
+
+export const uploadProfilePicture = (formData) => {
+  const token = getToken();
+  return axios.post(`${USER_API_URL}/upload-profile-picture`, formData, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'multipart/form-data'
     }
   });
 };

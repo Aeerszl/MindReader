@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
+import { setToken } from "../utils/tokenHelper";
 
 const API_URL = "http://localhost:5000/api/auth"; // Backend adresiniz
 
@@ -11,14 +12,14 @@ export default function Login() {
   const [success, setSuccess] = useState(false);
   const [countdown, setCountdown] = useState(2);
   const navigate = useNavigate();
-
   // Geri sayım efekti
   useEffect(() => {
     let timer;
     if (success && countdown > 0) {
       timer = setTimeout(() => {
         setCountdown(countdown - 1);
-      }, 1000);    } else if (success && countdown === 0) {
+      }, 1000);
+    } else if (success && countdown === 0) {
       navigate("/home");
     }
     return () => clearTimeout(timer);
@@ -34,13 +35,11 @@ export default function Login() {
       const response = await axios.post(`${API_URL}/login`, {
         email: form.email,
         password: form.password
-      });
-      
-      const { token, email } = response.data;
-      
-      if (token) {
-        localStorage.setItem("token", token);
-        localStorage.setItem("user", JSON.stringify({ email }));
+      });      const { token, email } = response.data;
+        if (token) {
+        // Token helper kullanarak token'ı kaydet
+        setToken(token);
+        sessionStorage.setItem("user", JSON.stringify({ email }));
         setSuccess(true);
       } else {
         setError("Sunucu yanıtında token bulunamadı!");
@@ -130,10 +129,9 @@ export default function Login() {
         
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600">
-            Henüz hesabınız yok mu?{" "}
-            <a href="/register" className="text-blue-600 hover:underline">
+            Henüz hesabınız yok mu?{" "}            <Link to="/register" className="text-blue-600 hover:underline">
               Kayıt Ol
-            </a>
+            </Link>
           </p>
         </div>
         

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 
 const API_URL = "http://localhost:5000/api/auth"; // Backend adresiniz
@@ -166,10 +166,9 @@ export default function Register() {
         
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600">
-            Zaten hesabınız var mı?{" "}
-            <a href="/login" className="text-blue-600 hover:underline">
+            Zaten hesabınız var mı?{" "}            <Link to="/login" className="text-blue-600 hover:underline">
               Giriş Yap
-            </a>
+            </Link>
           </p>
         </div>
       </div>

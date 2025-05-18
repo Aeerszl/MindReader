@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Analysis = require('../models/Analysis');
 const axios = require('axios');
 
 // Hugging Face API için ayarlar
@@ -374,30 +375,45 @@ exports.analyzeText = async (req, res) => {
       console.error("Çeviri hatası, orijinal metin kullanılacak:", translateError.message);
       // Çeviri başarısız olursa orijinal metni kullan
       textToAnalyze = text;
-    }
-
-    // Duygu analizi yap
+    }    // Duygu analizi yap
     const sentiment = await analyzeSentiment(textToAnalyze);
     console.log('Duygu analizi sonucu:', sentiment);
 
-    // Kullanıcının analizler listesine ekle
+    // Analizi MongoDB'ye kaydet
     try {
+      // Önce kullanıcıyı kontrol et
       const user = await User.findById(userId);
 
       if (!user) {
         return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
       }
-
-      user.analyses.push({
-        text,
-        translatedText,
-        sentiment: JSON.stringify(sentiment),
-        createdAt: new Date()
+      
+      // Analysis koleksiyonuna tam verilerle kaydet
+      const newAnalysis = new Analysis({
+        userId: userId,
+        text: text,
+        translatedText: translatedText, // Çevrilen metni de ekle
+        language: 'auto', // Varsayılan olarak otomatik
+        sentiment: {
+          score: Math.max(sentiment.positive, sentiment.negative, sentiment.neutral),
+          label: sentiment.positive > sentiment.negative && sentiment.positive > sentiment.neutral 
+            ? 'POSITIVE' 
+            : sentiment.negative > sentiment.positive && sentiment.negative > sentiment.neutral 
+              ? 'NEGATIVE' 
+              : 'NEUTRAL',
+          positive: sentiment.positive,
+          negative: sentiment.negative,
+          neutral: sentiment.neutral
+        },
+        recommendations: [] // İleriki sürümde duyguya göre öneriler eklenebilir
       });
-
-      await user.save();
+      
+      // MongoDB'ye kaydet
+      await newAnalysis.save();
+      console.log('Analiz MongoDB Analysis koleksiyonuna kaydedildi. ID:', newAnalysis._id);
+      
     } catch (dbError) {
-      console.error("Kullanıcı veritabanı hatası:", dbError.message);
+      console.error("Veritabanı kayıt hatası:", dbError.message);
       // Veritabanı hatası olsa bile analiz sonucunu döndür
     }
 
@@ -431,22 +447,82 @@ exports.getUserAnalyses = async (req, res) => {
       return res.status(401).json({ error: 'Kullanıcı kimliği bulunamadı' });
     }
 
-    const user = await User.findById(userId);
+    // Sadece Analysis modelinden kullanıcının analizlerini getir
+    const analyses = await Analysis.find({ userId: userId }).sort({ createdAt: -1 });
+    
+    console.log(`${userId} kullanıcısının ${analyses.length} adet analizi MongoDB'den çekildi.`);
 
-    if (!user) {
-      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
-    }
-
-    const sortedAnalyses = [...user.analyses].sort((a, b) =>
-      new Date(b.createdAt) - new Date(a.createdAt)
-    );
-
-    return res.status(200).json(sortedAnalyses);
+    return res.status(200).json(analyses);
 
   } catch (error) {
     console.error('Analizleri getirme hatası:', error);
     return res.status(500).json({
       error: error.message || 'Analizler getirilirken bir hata oluştu'
+    });
+  }
+};
+
+// Kullanıcının bir analizini sil
+exports.deleteAnalysis = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { analysisId } = req.params;
+
+    console.log(`Silme isteği alındı - UserId: ${userId}, AnalysisId: ${analysisId}`);
+
+    if (!userId) {
+      console.error('Kullanıcı kimliği (userId) boş!');
+      return res.status(401).json({ error: 'Kullanıcı kimliği bulunamadı' });
+    }
+
+    if (!analysisId) {
+      console.error('Analiz ID parametresi boş!');
+      return res.status(400).json({ error: 'Analiz ID\'si gerekli' });
+    }
+
+    console.log(`Analiz silme işlemi başlatılıyor - UserID: ${userId}, AnalysisID: ${analysisId}`);
+
+    try {
+      // Önce analizi bulalım (silmeden önce kontrol)
+      const analysis = await Analysis.findOne({
+        _id: analysisId,
+        userId: userId
+      });
+
+      if (!analysis) {
+        console.log(`Analiz bulunamadı veya erişim yok - AnalysisID: ${analysisId}, UserID: ${userId}`);
+        return res.status(404).json({ error: 'Belirtilen analiz bulunamadı veya silme yetkiniz yok' });
+      }
+
+      console.log('Silme işlemi öncesi analiz bulundu:', analysis);
+    } catch (findError) {
+      console.error('Analiz arama hatası:', findError);
+    }
+
+    // Direkt olarak Analysis koleksiyonundan silme işlemi yap
+    // ÖNEMLİ: Silme işleminde mutlaka userId kontrolü yapılmalı
+    const deleteResult = await Analysis.deleteOne({
+      _id: analysisId,
+      userId: userId // Güvenlik için kullanıcı kimliği kontrolü
+    });
+
+    console.log('Silme işlemi sonucu:', deleteResult);
+
+    if (deleteResult.deletedCount === 0) {
+      console.error(`Silme başarısız - Silinecek kayıt bulunamadı. AnalysisID: ${analysisId}`);
+      return res.status(404).json({ error: 'Belirtilen analiz bulunamadı veya silme yetkiniz yok' });
+    }
+
+    console.log(`Analiz başarıyla silindi - AnalysisID: ${analysisId}`);
+    return res.status(200).json({ 
+      message: 'Analiz başarıyla silindi',
+      deletedAnalysisId: analysisId
+    });
+
+  } catch (error) {
+    console.error('Analiz silme hatası:', error);
+    return res.status(500).json({
+      error: error.message || 'Analiz silinirken bir hata oluştu'
     });
   }
 };
@@ -460,12 +536,6 @@ exports.getWeeklyAnalysis = async (req, res) => {
       return res.status(401).json({ error: 'Kullanıcı kimliği bulunamadı' });
     }
 
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
-    }
-
     // Son 7 gün için tarih hesapla
     const today = new Date();
     today.setHours(23, 59, 59, 999); // Günün sonuna ayarla
@@ -474,10 +544,25 @@ exports.getWeeklyAnalysis = async (req, res) => {
     lastWeek.setDate(today.getDate() - 6); // 7 gün (bugün dahil)
     lastWeek.setHours(0, 0, 0, 0); // Günün başına ayarla
     
-    // Son 7 günün analizlerini filtrele
-    const weeklyAnalyses = user.analyses.filter(analysis => {
-      const analysisDate = new Date(analysis.createdAt);
-      return analysisDate >= lastWeek && analysisDate <= today;
+    // Son 7 gündeki analizleri MongoDB'den direk getir
+    const analyses = await Analysis.find({
+      userId: userId,
+      createdAt: { $gte: lastWeek, $lte: today }
+    }).sort({ createdAt: 1 });
+    
+    console.log(`Son 7 gün için ${analyses.length} adet analiz bulundu.`);
+    
+    // Analiz sonuçlarını analiz et
+    const weeklyAnalyses = analyses.map(analysis => {
+      return {
+        text: analysis.text,
+        createdAt: analysis.createdAt,
+        sentiment: {
+          positive: analysis.sentiment.positive || 0,
+          negative: analysis.sentiment.negative || 0,
+          neutral: analysis.sentiment.neutral || 0
+        }
+      };
     });
     
     // Günlere göre grupla ve ortalama hesapla
@@ -504,17 +589,10 @@ exports.getWeeklyAnalysis = async (req, res) => {
         // Analiz tarihini al ve gün formatına çevir
         const analysisDate = new Date(analysis.createdAt);
         const dateStr = analysisDate.toISOString().split('T')[0]; // YYYY-MM-DD formatı
-        
-        // Gün verisi mevcutsa (son 7 gün içindeyse)
+          // Gün verisi mevcutsa (son 7 gün içindeyse)
         if (dailyData[dateStr]) {
-          // Sentiment değerlerini parse et
-          let sentiment;
-          try {
-            sentiment = JSON.parse(analysis.sentiment);
-          } catch (e) {
-            console.warn("Sentiment parse hatası:", e.message);
-            return; // Bu analizi atla
-          }
+          // Sentiment objesi direkt kullan (parse etmeden)
+          const sentiment = analysis.sentiment;
           
           // Sentiment değerlerini ekle
           if (sentiment) {
@@ -553,9 +631,39 @@ exports.getWeeklyAnalysis = async (req, res) => {
       }
       return day;
     });
-    
-    // Sonuçları tarihe göre sırala (en eskiden en yeniye)
+      // Sonuçları tarihe göre sırala (en eskiden en yeniye)
     result.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    // Döndürmeden önce detaylı loglama yap
+    console.log('Haftalık analiz sonuçları:');
+    console.log('Toplam gün sayısı:', result.length);
+    console.log('Örnek veri (ilk gün):', result[0]);
+    
+    // NaN, undefined veya null değerler var mı kontrol et
+    const hasInvalidValue = result.some(day => {
+      return isNaN(day.average) || 
+             isNaN(day.positive) || 
+             isNaN(day.negative) || 
+             isNaN(day.neutral) ||
+             day.average === undefined || 
+             day.positive === undefined || 
+             day.negative === undefined || 
+             day.neutral === undefined;
+    });
+    
+    if (hasInvalidValue) {
+      console.warn('DİKKAT: Haftalık verilerde geçersiz değerler var!');
+      
+      // Geçersiz değerleri düzelt
+      result.forEach(day => {
+        if (isNaN(day.average) || day.average === undefined) day.average = 0;
+        if (isNaN(day.positive) || day.positive === undefined) day.positive = 0;
+        if (isNaN(day.negative) || day.negative === undefined) day.negative = 0;
+        if (isNaN(day.neutral) || day.neutral === undefined) day.neutral = 0;
+      });
+      
+      console.log('Düzeltilmiş veriler:', result);
+    }
 
     return res.status(200).json(result);
 

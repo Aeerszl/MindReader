@@ -2,8 +2,9 @@
 /* eslint-disable react/prop-types */
 // Friends.jsx
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { 
-  Search, UserPlus, UserCheck, UserMinus, X, Check, Clock ,AlertCircle
+  Search, UserPlus, UserCheck, UserMinus, X, Check, Clock, AlertCircle, User
 } from 'lucide-react';
 import { 
   getFriends, 
@@ -261,8 +262,7 @@ const Friends = () => {
           <p className="mt-2">Arkadaş eklemek için "Arkadaş Ara" sekmesini kullanabilirsiniz</p>
         </div>
       ) : (
-        <div className="grid gap-3">
-          {friends.map(friend => (
+        <div className="grid gap-3">          {friends.map(friend => (
             <div 
               key={friend._id} 
               className="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-200 hover:shadow-md"
@@ -274,13 +274,23 @@ const Friends = () => {
                   <p className="text-gray-500 text-sm">{friend.email}</p>
                 </div>
               </div>
-              <button 
-                onClick={() => handleRemoveFriend(friend._id)}
-                className="text-gray-500 hover:text-red-600 p-2 rounded-full hover:bg-red-50"
-                title="Arkadaşlıktan çıkar"
-              >
-                <UserMinus size={20} />
-              </button>
+              <div className="flex gap-2">
+                <Link 
+                  to={`/profile/friend/${friend._id}`}
+                  className="text-blue-600 hover:text-blue-800 p-2 rounded-full hover:bg-blue-50 flex items-center gap-1"
+                  title="Profili görüntüle"
+                >
+                  <User size={20} />
+                  <span>Profil</span>
+                </Link>
+                <button 
+                  onClick={() => handleRemoveFriend(friend._id)}
+                  className="text-gray-500 hover:text-red-600 p-2 rounded-full hover:bg-red-50"
+                  title="Arkadaşlıktan çıkar"
+                >
+                  <UserMinus size={20} />
+                </button>
+              </div>
             </div>
           ))}
         </div>

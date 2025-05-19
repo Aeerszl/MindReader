@@ -1,364 +1,404 @@
-/* eslint-disable react/prop-types */
+// FriendProfile.jsx
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { User, Clock, ArrowLeft, Share2, AlertCircle, Calendar, Activity } from 'lucide-react';
-import { getFriendProfile, getFriendAnalytics } from '../services/friendService';
+import { useParams } from 'react-router-dom';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js';
+import { Line, Bar } from 'react-chartjs-2';
+import { getUserDetails } from '../services/authService';
+import { getFriendWeeklyAnalysis } from '../services/analysisService';
+
+// Chart.js bileşenlerini kaydet
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
 
 const FriendProfile = () => {
   const { friendId } = useParams();
-  const navigate = useNavigate();
-  const [friend, setFriend] = useState(null);
-  const [analytics, setAnalytics] = useState(null);
+  const [friendData, setFriendData] = useState(null);
+  const [weeklyData, setWeeklyData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Türkçe ay isimleri
+  const turkishMonths = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 
+                       'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
   
-  // Kullanıcıyı ve analizleri yükle
+  // Günleri formatla: (YYYY-MM-DD) -> "5 Mayıs"
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    const day = date.getDate();
+    const month = turkishMonths[date.getMonth()];
+    return `${day} ${month}`;
+  };
+  
   useEffect(() => {
-    const loadFriendData = async () => {
+    const fetchFriendData = async () => {
       try {
         setLoading(true);
         setError(null);
-        
-        // Arkadaş ve analiz bilgilerini paralel olarak getir
-        const [profileResponse, analyticsResponse] = await Promise.all([
-          getFriendProfile(friendId),
-          getFriendAnalytics(friendId)
-        ]);
-        
-        // Yanıtları kontrol et
-        if (profileResponse && profileResponse.data && profileResponse.data.user) {
-          setFriend(profileResponse.data.user);
-        } else {
-          console.warn("Profil verileri geçerli değil:", profileResponse);
-          setError("Arkadaş profili yüklenemedi.");
-          return;
+
+        // Arkadaşın bilgilerini getir
+        const userResponse = await getUserDetails(friendId);
+        if (userResponse?.data) {
+          setFriendData(userResponse.data);
         }
-        
-        if (analyticsResponse && analyticsResponse.data) {
-          console.log("Alınan analiz verileri:", analyticsResponse.data);
-          try {
-            // Recharts için veri formatlama ve veri doğrulama
-            const formattedData = {
-              ...analyticsResponse.data,
-              totalAnalyses: Number(analyticsResponse.data.totalAnalyses || 0),
-              lastWeekAnalyses: Number(analyticsResponse.data.lastWeekAnalyses || 0),
-              
-              // sentimentDistribution verilerini kontrol et ve formatlı şekilde kullan
-              sentimentDistribution: Array.isArray(analyticsResponse.data.sentimentDistribution) && 
-                analyticsResponse.data.sentimentDistribution.length > 0 ? 
-                analyticsResponse.data.sentimentDistribution.map(item => ({
-                  name: String(item?.name || ""),
-                  value: Number(item?.value || 0)
-                })) : [
-                  { name: 'Pozitif', value: 60 },
-                  { name: 'Nötr', value: 30 },
-                  { name: 'Negatif', value: 10 }
-                ],
-                
-              // weeklyData verilerini kontrol et ve formatlı şekilde kullan  
-              weeklyData: Array.isArray(analyticsResponse.data.weeklyData) && 
-                analyticsResponse.data.weeklyData.length > 0 ? 
-                analyticsResponse.data.weeklyData.map(item => ({
-                  date: String(item?.date || ""),
-                  positive: Number(item?.positive || 0),
-                  neutral: Number(item?.neutral || 0),
-                  negative: Number(item?.negative || 0)
-                })) : (() => {
-                  const last7Days = Array(7).fill().map((_, i) => {
-                    const date = new Date();
-                    date.setDate(date.getDate() - i);
-                    return date.toLocaleDateString('tr-TR', { weekday: 'short', day: 'numeric' });
-                  }).reverse();
-                  
-                  return last7Days.map(day => ({
-                    date: day,
-                    positive: Math.floor(Math.random() * 5),
-                    neutral: Math.floor(Math.random() * 3),
-                    negative: Math.floor(Math.random() * 2)
-                  }));
-                })()
-            };
-            
-            console.log("Formatlanmış veri:", formattedData);
-            setAnalytics(formattedData);
-          } catch (formatError) {
-            console.error("Veri formatlarken hata:", formatError);
-            
-            // Hata durumunda örnek veri kullan
-            const fallbackData = {
-              totalAnalyses: 0,
-              lastWeekAnalyses: 0,
-              sentimentDistribution: [
-                { name: 'Pozitif', value: 1 },
-                { name: 'Nötr', value: 1 },
-                { name: 'Negatif', value: 1 }
-              ],
-              weeklyData: Array(7).fill().map((_, i) => {
-                const date = new Date();
-                date.setDate(date.getDate() - i);
-                const dayStr = date.toLocaleDateString('tr-TR', { weekday: 'short', day: 'numeric' });
-                return { date: dayStr, positive: 1, neutral: 1, negative: 1 };
-              }).reverse(),
-              recentAnalyses: []
-            };
-            
-            setAnalytics(fallbackData);
+
+        // Arkadaşın haftalık analizini getir
+        const weeklyResponse = await getFriendWeeklyAnalysis(friendId);
+        if (weeklyResponse?.data) {
+          if (Array.isArray(weeklyResponse.data)) {
+            setWeeklyData(weeklyResponse.data);
+          } else if (weeklyResponse.data.weeklyData) {
+            setWeeklyData(weeklyResponse.data.weeklyData);
           }
-        } else {
-          console.warn("Analiz verileri geçerli değil:", analyticsResponse);
-          // Analiz verisi yoksa sadece uyarı veririz ama profili göstermeye devam ederiz
-          
-          // Grafiklerin düzgün görünmesi için minimum örnek veri hazırlayalım
-          const fallbackAnalytics = {
-            totalAnalyses: 0,
-            lastWeekAnalyses: 0,
-            sentimentDistribution: [
-              { name: 'Pozitif', value: 1 },
-              { name: 'Nötr', value: 1 },
-              { name: 'Negatif', value: 1 }
-            ],
-            weeklyData: Array(7).fill().map((_, i) => {
-              const date = new Date();
-              date.setDate(date.getDate() - i);
-              const dayStr = date.toLocaleDateString('tr-TR', { weekday: 'short', day: 'numeric' });
-              return {
-                date: dayStr,
-                positive: 0,
-                neutral: 0,
-                negative: 0
-              };
-            }).reverse(),
-            recentAnalyses: []
-          };
-          
-          setAnalytics(fallbackAnalytics);
         }
       } catch (err) {
-        console.error("Arkadaş verisi yüklenirken hata:", err);
-        setError("Arkadaş bilgileri yüklenirken bir hata oluştu. Lütfen tekrar deneyin.");
+        console.error("Arkadaş profili yüklenirken hata:", err);
+        setError("Arkadaş profili yüklenirken bir hata oluştu. Lütfen tekrar deneyin.");
       } finally {
         setLoading(false);
       }
     };
-    
+
     if (friendId) {
-      loadFriendData();
+      fetchFriendData();
     }
   }, [friendId]);
+  // Backend'den gelen veriyi basit bir şekilde kullan
+  const safeWeeklyData = weeklyData && weeklyData.length > 0 ? weeklyData : [{
+    date: new Date().toISOString().split('T')[0],
+    average: 0,
+    positive: 0,
+    negative: 0,
+    neutral: 0,
+    count: 0
+  }];
   
-  // Loading ekranı
+  // Ana duygu değeri grafiği için veri
+  const chartData = {
+    labels: safeWeeklyData.map(item => formatDate(item.date)),
+    datasets: [
+      {
+        label: 'Günlük Duygu Değeri',
+        data: safeWeeklyData.map(item => item.average),
+        fill: 'origin',
+        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+        borderColor: 'rgba(75, 192, 192, 1)',
+        borderWidth: 2,
+        tension: 0.4,
+        pointBackgroundColor: safeWeeklyData.map(item => {
+          // Duygu değerine göre nokta rengi
+          if (item.average > 0.2) return 'rgba(75, 192, 120, 1)'; // yeşil (pozitif)
+          if (item.average < -0.2) return 'rgba(255, 99, 132, 1)'; // kırmızı (negatif)
+          return 'rgba(53, 162, 235, 1)'; // mavi (nötr)
+        }),
+        pointBorderColor: '#fff',
+        pointRadius: 5,
+        pointHoverRadius: 7
+      }
+    ]
+  };
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      y: {
+        min: -1,
+        max: 1,
+        ticks: {
+          callback: function(value) {
+            if (value === 1) return 'Pozitif';
+            if (value === 0) return 'Nötr';
+            if (value === -1) return 'Negatif';
+            return '';
+          },
+          font: {
+            size: 12
+          },
+          color: 'rgba(0, 0, 0, 0.6)'
+        },
+        grid: {
+          color: (context) => {
+            if (context.tick.value === 0) {
+              return 'rgba(0, 0, 0, 0.2)';
+            }
+            return 'rgba(0, 0, 0, 0.1)';
+          }
+        }
+      },
+      x: {
+        ticks: {
+          font: {
+            size: 12
+          },
+          color: 'rgba(0, 0, 0, 0.6)'
+        },
+        grid: {
+          display: false
+        }
+      }
+    },
+    plugins: {
+      legend: {
+        position: 'top',
+        labels: {
+          boxWidth: 12,
+          usePointStyle: true,
+          pointStyle: 'circle'
+        }
+      },
+      tooltip: {
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        titleFont: {
+          size: 13
+        },
+        bodyFont: {
+          size: 12
+        },
+        callbacks: {
+          label: function(context) {
+            let value = context.raw;
+            let sentiment = 'Nötr';
+            if (value > 0.2) sentiment = 'Pozitif';
+            if (value < -0.2) sentiment = 'Negatif';
+            return `Duygu Değeri: ${value.toFixed(2)} (${sentiment})`;
+          }
+        }
+      }
+    },
+    layout: {
+      padding: {
+        top: 10
+      }
+    },
+    animation: {
+      duration: 1000,
+      easing: 'easeOutQuart'
+    }
+  };
+  
+  // Duygu dağılımı bar grafiği için veri
+  const emotionBarData = {
+    labels: safeWeeklyData.map(item => formatDate(item.date)),
+    datasets: [
+      {
+        label: 'Pozitif',
+        data: safeWeeklyData.map(item => item.positive),
+        backgroundColor: 'rgba(75, 192, 120, 0.7)'
+      },
+      {
+        label: 'Nötr',
+        data: safeWeeklyData.map(item => item.neutral),
+        backgroundColor: 'rgba(53, 162, 235, 0.7)'
+      },
+      {
+        label: 'Negatif',
+        data: safeWeeklyData.map(item => item.negative),
+        backgroundColor: 'rgba(255, 99, 132, 0.7)'
+      }
+    ]
+  };
+  
+  const emotionBarOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      y: {
+        beginAtZero: true,
+        max: 1,
+        ticks: {
+          callback: function(value) {
+            return `${value * 100}%`;
+          }
+        }
+      }
+    },
+    plugins: {
+      title: {
+        display: true,
+        text: 'Duygu Dağılımı'
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return `${context.dataset.label}: ${(context.raw * 100).toFixed(1)}%`;
+          }
+        }
+      }
+    }
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-  
-  // Hata ekranı
-  if (error || !friend) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 flex items-center">
-          <AlertCircle size={20} className="mr-2" />
-          {error || "Kullanıcı bulunamadı"}
+      <div className="w-full h-screen flex justify-center items-center">
+        <div className="text-center">
+          <div className="spinner"></div>
+          <p className="mt-4 text-gray-600">Arkadaş profili yükleniyor...</p>
         </div>
-        <button 
-          onClick={() => navigate('/friends')} 
-          className="mt-4 flex items-center text-blue-600 hover:text-blue-800"
-        >
-          <ArrowLeft size={16} className="mr-1" />
-          Arkadaşlar sayfasına dön
-        </button>
       </div>
     );
   }
-  
-  // Profil ve analiz içeriği
+
+  if (error) {
+    return (
+      <div className="w-full p-4 text-center">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+          <p>{error}</p>
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6">
-      {/* Geri butonu */}
-      <button 
-        onClick={() => navigate('/friends')} 
-        className="mb-6 flex items-center text-blue-600 hover:text-blue-800"
-      >
-        <ArrowLeft size={16} className="mr-1" />
-        Arkadaşlar sayfasına dön
-      </button>
-      
-      {/* Profil kartı */}
+    <div className="container mx-auto p-4 max-w-6xl">
+      {/* Profil Bilgileri - Geliştirilmiş Tasarım */}
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div className="flex items-center">
-          {friend.profileImage ? (
-            <img 
-              src={friend.profileImage} 
-              alt={friend.username} 
-              className="w-20 h-20 rounded-full object-cover mr-6"
-            />
+        <div className="flex flex-col sm:flex-row items-center justify-between">
+          <div className="flex flex-col sm:flex-row items-center">
+            <div className="w-36 h-36 rounded-full overflow-hidden mb-4 sm:mb-0 sm:mr-6 border-4 border-blue-100 shadow-md">
+              <img 
+                src={friendData?.profileImage || "/profile-placeholder.png"} 
+                alt={`${friendData?.username}'s profile`} 
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="text-center sm:text-left">
+              <h2 className="text-3xl font-bold text-gray-800">{friendData?.username}</h2>
+              <div className="flex items-center justify-center sm:justify-start gap-2 text-gray-600 mt-2">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"></path>
+                  <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"></path>
+                </svg>
+                <p>{friendData?.email}</p>
+              </div>
+              <div className="flex items-center justify-center sm:justify-start gap-2 text-gray-500 mt-1">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd"></path>
+                </svg>
+                <p>Katılım: {new Date(friendData?.createdAt).toLocaleDateString()}</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-4 sm:mt-0 bg-blue-50 p-4 rounded-lg">
+            <h3 className="font-medium text-blue-800 text-sm uppercase">Duygu Durumu</h3>
+            <div className="mt-2">
+              {safeWeeklyData.length > 0 && (
+                <div className="flex items-center">
+                  {(() => {
+                    const lastValue = safeWeeklyData[safeWeeklyData.length-1].average;
+                    let color = "text-blue-500";
+                    let mood = "Nötr";
+                    let icon = (
+                      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 100-2 1 1 0 000 2zm7-1a1 1 0 11-2 0 1 1 0 012 0zm-7.536 5.879a1 1 0 001.415 0 3 3 0 014.242 0 1 1 0 001.415-1.415 5 5 0 00-7.072 0 1 1 0 000 1.415z" clipRule="evenodd"></path>
+                      </svg>
+                    );
+                    
+                    if (lastValue > 0.2) {
+                      color = "text-green-500";
+                      mood = "Pozitif";
+                      icon = (
+                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 100-2 1 1 0 000 2zm7-1a1 1 0 11-2 0 1 1 0 012 0zm-.464 5.535a1 1 0 10-1.415-1.414 3 3 0 01-4.242 0 1 1 0 00-1.415 1.414 5 5 0 007.072 0z" clipRule="evenodd"></path>
+                        </svg>
+                      );
+                    } else if (lastValue < -0.2) {
+                      color = "text-red-500";
+                      mood = "Negatif";
+                      icon = (
+                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 100-2 1 1 0 000 2zm7-1a1 1 0 11-2 0 1 1 0 012 0zm-7.536 5.879a1 1 0 001.415 0 3 3 0 014.242 0 1 1 0 001.415-1.415 5 5 0 00-7.072 0 1 1 0 000 1.415z" clipRule="evenodd"></path>
+                        </svg>
+                      );
+                    }
+                    
+                    return (
+                      <>
+                        <span className={`${color} mr-2`}>{icon}</span>
+                        <span className={`font-bold ${color}`}>{mood}</span>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Haftalık Analiz Grafikleri - 2 Kart Yan Yana */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Ana Duygu Grafiği */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h3 className="text-xl font-bold mb-4 text-gray-800 flex items-center">
+            <svg className="w-6 h-6 mr-2 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm3.293 1.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L7.586 10 5.293 7.707a1 1 0 010-1.414zM11 12a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd"></path>
+            </svg>
+            Haftalık Duygu Değerleri
+          </h3>
+          
+          {safeWeeklyData.length > 0 ? (
+            <div className="h-72">
+              <Line data={chartData} options={chartOptions} />
+            </div>
           ) : (
-            <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-semibold mr-6">
-              {friend.username.charAt(0).toUpperCase()}
+            <div className="flex flex-col items-center justify-center py-10 text-gray-500 bg-gray-50 rounded-lg h-72">
+              <svg className="w-16 h-16 mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <p>Bu hafta için analiz verisi bulunmuyor.</p>
             </div>
           )}
+        </div>
+
+        {/* Duygu Dağılımı Bar Grafiği */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h3 className="text-xl font-bold mb-4 text-gray-800 flex items-center">
+            <svg className="w-6 h-6 mr-2 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z"></path>
+              <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z"></path>
+            </svg>
+            Duygu Dağılımı
+          </h3>
           
-          <div>
-            <h1 className="text-2xl font-bold">{friend.username}</h1>
-            <div className="text-gray-500 flex items-center mt-1">
-              <User size={16} className="mr-1" />
-              <span>{friend.email}</span>
+          {safeWeeklyData.length > 0 ? (
+            <div className="h-72">
+              <Bar data={emotionBarData} options={emotionBarOptions} />
             </div>
-            <div className="text-gray-500 flex items-center mt-1">
-              <Clock size={16} className="mr-1" />
-              <span>Üyelik: {new Date(friend.createdAt).toLocaleDateString('tr-TR')}</span>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-10 text-gray-500 bg-gray-50 rounded-lg h-72">
+              <svg className="w-16 h-16 mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+              </svg>
+              <p>Bu hafta için analiz verisi bulunmuyor.</p>
             </div>
-          </div>
+          )}
         </div>
       </div>
       
-      {/* Analiz kartları */}
-      {analytics ? (
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Toplam analiz sayısı */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center">
-              <Activity size={20} className="mr-2 text-blue-600" />
-              Analiz İstatistikleri
-            </h2>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <span className="text-sm text-gray-500">Toplam Analiz</span>
-                <p className="text-2xl font-bold text-blue-700">{analytics.totalAnalyses || 0}</p>
-              </div>
-              
-              <div className="bg-green-50 p-4 rounded-lg">
-                <span className="text-sm text-gray-500">Son 7 Gün</span>
-                <p className="text-2xl font-bold text-green-700">{analytics.lastWeekAnalyses || 0}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Duygu Dağılımı Pasta Grafiği */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center">
-              <Calendar size={20} className="mr-2 text-blue-600" />
-              Duygu Dağılımı
-            </h2>
-            
-            {analytics.sentimentDistribution && analytics.sentimentDistribution.length > 0 ? (
-              <div style={{ width: '100%', height: 280 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={analytics.sentimentDistribution}
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                      nameKey="name"
-                      label
-                    >
-                      {analytics.sentimentDistribution.map((entry, index) => {
-                        const COLORS = ['#4CAF50', '#FFC107', '#F44336'];
-                        return <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />;
-                      })}
-                    </Pie>
-                    <Legend />
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500">
-                Yeterli veri bulunmuyor
-              </div>
-            )}
-          </div>
-          
-          {/* Haftalık Analiz Grafiği */}
-          <div className="bg-white rounded-lg shadow-md p-6 md:col-span-2">
-            <h2 className="text-xl font-semibold mb-4 flex items-center">
-              <Calendar size={20} className="mr-2 text-blue-600" />
-              Son 7 Gün Duygu Analizi
-            </h2>
-            
-            {analytics.weeklyData && analytics.weeklyData.length > 0 ? (
-              <div style={{ width: '100%', height: 350 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={analytics.weeklyData}>
-                    <XAxis dataKey="date" />
-                    <YAxis />
-                    <Legend />
-                    <Tooltip />
-                    <Bar dataKey="positive" name="Pozitif" fill="#4CAF50" stackId="a" />
-                    <Bar dataKey="neutral" name="Nötr" fill="#FFC107" stackId="a" />
-                    <Bar dataKey="negative" name="Negatif" fill="#F44336" stackId="a" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <div className="h-80 flex items-center justify-center text-gray-500">
-                Son 7 güne ait veri bulunmuyor
-              </div>
-            )}
-          </div>
-          
-          {/* Son Analizler */}
-          <div className="bg-white rounded-lg shadow-md p-6 md:col-span-2">
-            <h2 className="text-xl font-semibold mb-4 flex items-center">
-              <Share2 size={20} className="mr-2 text-blue-600" />
-              Son Analizler
-            </h2>
-            
-            {analytics.recentAnalyses && analytics.recentAnalyses.length > 0 ? (
-              <div className="space-y-4 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                {analytics.recentAnalyses.map((analysis) => (
-                  <div 
-                    key={analysis._id} 
-                    className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50"
-                  >
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-500">
-                        {new Date(analysis.createdAt).toLocaleDateString('tr-TR', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric'
-                        })}
-                      </span>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        analysis.sentiment === 'Pozitif' ? 'bg-green-100 text-green-800' : 
-                        analysis.sentiment === 'Negatif' ? 'bg-red-100 text-red-800' : 
-                        'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {analysis.sentiment}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-gray-700">{analysis.text}</p>
-                    {analysis.translatedText && (
-                      <p className="mt-1 text-gray-500 text-sm border-t border-gray-100 pt-2">
-                        <span className="font-medium">Çeviri:</span> {analysis.translatedText}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="h-32 flex items-center justify-center text-gray-500">
-                Henüz analiz bulunmuyor
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-8 rounded text-center">
-          Bu arkadaş henüz analiz yapmamış veya analizlerini paylaşmıyor.
-        </div>
-      )}
-    </div>
+  
+        
+       
+      </div>
   );
 };
 

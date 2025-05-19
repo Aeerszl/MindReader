@@ -46,3 +46,12 @@ export const uploadProfilePicture = (formData) => {
     }
   });
 };
+
+export const getUserDetails = (userId) => {
+  const token = getToken();
+  return axios.get(`${USER_API_URL}/${userId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+};

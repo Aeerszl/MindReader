@@ -674,3 +674,124 @@ exports.getWeeklyAnalysis = async (req, res) => {
     });
   }
 };
+
+/**
+ * @route GET /api/analysis/weekly/:friendId
+ * @desc Bir arkadaşın haftalık analiz verilerini getir
+ * @access Private
+ */
+exports.getFriendWeeklyAnalysis = async (req, res) => {
+  try {
+    const userId = req.userId; // İsteği yapan kullanıcının ID'si
+    const friendId = req.params.friendId; // İstenen arkadaşın ID'si
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Kullanıcı kimliği bulunamadı' });
+    }
+
+    if (!friendId) {
+      return res.status(400).json({ error: 'Arkadaş kimliği gereklidir' });
+    }
+
+    // Öncelikle bu kullanıcının arkadaşlar listesinde olup olmadığını kontrol et
+    const user = await User.findById(userId).select('friends');
+    
+    if (!user) {
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+
+    // Arkadaşlık durumunu kontrol et
+    const isFriend = user.friends.includes(friendId);
+    
+    if (!isFriend) {
+      return res.status(403).json({ error: 'Bu kullanıcı sizin arkadaşınız değil' });
+    }
+
+    // Son 7 gün için tarih hesapla
+    const today = new Date();
+    today.setHours(23, 59, 59, 999); // Günün sonuna ayarla
+    
+    const lastWeek = new Date(today);
+    lastWeek.setDate(today.getDate() - 6); // 7 gün (bugün dahil)
+    lastWeek.setHours(0, 0, 0, 0); // Günün başına ayarla
+    
+    // Arkadaşın son 7 gündeki analizlerini MongoDB'den getir
+    const analyses = await Analysis.find({
+      userId: friendId,
+      createdAt: { $gte: lastWeek, $lte: today }
+    }).sort({ createdAt: 1 });
+    
+    console.log(`Arkadaşın son 7 günü için ${analyses.length} adet analiz bulundu.`);
+    
+    // Analiz sonuçlarını analiz et
+    const weeklyAnalyses = analyses.map(analysis => {
+      return {
+        text: analysis.text,
+        createdAt: analysis.createdAt,
+        sentiment: {
+          positive: analysis.sentiment.positive || 0,
+          negative: analysis.sentiment.negative || 0,
+          neutral: analysis.sentiment.neutral || 0
+        }
+      };
+    });
+    
+    // Günlere göre grupla ve ortalama hesapla
+    const dailyData = {};
+    
+    // Son 7 gün için boş günlük veri nesnesi oluştur
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD formatı
+      dailyData[dateStr] = {
+        date: dateStr,
+        positive: 0,
+        neutral: 0,
+        negative: 0,
+        average: 0, // Duygusal değer: positive=1, neutral=0, negative=-1
+        count: 0 // Bu gün için toplam analiz sayısı
+      };
+    }
+    
+    // Her analiz için günlük verileri topla
+    weeklyAnalyses.forEach(analysis => {
+      const dateStr = new Date(analysis.createdAt).toISOString().split('T')[0];
+      
+      // Bu tarih son 7 gün içinde mi kontrol et
+      if (dailyData[dateStr]) {
+        dailyData[dateStr].positive += analysis.sentiment.positive;
+        dailyData[dateStr].neutral += analysis.sentiment.neutral;
+        dailyData[dateStr].negative += analysis.sentiment.negative;
+        dailyData[dateStr].count++;
+      }
+    });
+    
+    // Günlük ortalamaları hesapla
+    const weeklyData = Object.values(dailyData).map(day => {
+      if (day.count > 0) {
+        day.positive /= day.count;
+        day.neutral /= day.count;
+        day.negative /= day.count;
+        
+        // Duygusal ortalama hesapla (1 pozitif, 0 nötr, -1 negatif)
+        day.average = (day.positive - day.negative);
+      }
+      
+      // Count alanını sonuçtan çıkar (frontend'e gerek yok)
+      const { count, ...result } = day;
+      return result;
+    });
+    
+    // Tarihe göre sırala (eskiden yeniye)
+    weeklyData.sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    res.json(weeklyData);
+    
+  } catch (error) {
+    console.error('Arkadaş haftalık analiz getirme hatası:', error);
+    return res.status(500).json({
+      error: error.message || 'Arkadaşın haftalık analiz verileri getirilirken bir hata oluştu'
+    });
+  }
+};

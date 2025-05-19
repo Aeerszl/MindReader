@@ -1,7 +1,7 @@
 //analysisRoutes.js
 const express = require('express');
 const router = express.Router();
-const { analyzeText, getUserAnalyses, checkStatus, getWeeklyAnalysis, deleteAnalysis } = require('../controllers/analyzeController');
+const { analyzeText, getUserAnalyses, checkStatus, getWeeklyAnalysis, deleteAnalysis, getFriendWeeklyAnalysis } = require('../controllers/analyzeController');
 const { verifyToken } = require('../middleware/authMiddleware');
 
 // POST /api/analysis - Analyze text
@@ -15,6 +15,9 @@ router.get('/status', verifyToken, checkStatus);
 
 // GET /api/analysis/weekly - Get user's weekly analysis data
 router.get('/weekly', verifyToken, getWeeklyAnalysis);
+
+// GET /api/analysis/weekly/:friendId - Get friend's weekly analysis data
+router.get('/weekly/:friendId', verifyToken, getFriendWeeklyAnalysis);
 
 // DELETE /api/analysis/:analysisId - Delete a specific analysis
 router.delete('/:analysisId', verifyToken, deleteAnalysis);

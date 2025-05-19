@@ -14,6 +14,16 @@ export const getWeeklyAnalysis = () => {
   });
 };
 
+// Arkadaşın haftalık duygu analizi verilerini getir
+export const getFriendWeeklyAnalysis = (friendId) => {
+  const token = getToken();
+  return axios.get(`${API_URL}/analysis/weekly/${friendId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+};
+
 // Kullanıcının bütün analizlerini getir
 export const getUserAnalyses = () => {
   const token = getToken();

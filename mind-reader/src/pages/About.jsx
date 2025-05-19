@@ -20,7 +20,7 @@ const About = () => {
           <h2 className="text-xl font-medium text-gray-700 mb-2">Nasıl Çalışır?</h2>
           <p className="text-gray-600">
             Uygulama, gelişmiş doğal dil işleme modelleri kullanarak metindeki duygu 
-            ifadelerini tespit eder ve sınıflandırır. Metin Türkçe ise önce İngilizce'ye 
+            ifadelerini tespit eder ve sınıflandırır. Metin Türkçe ise önce İngilizce&#39;ye 
             çevrilir, ardından duygu analizi yapılır ve sonuçlar grafikler halinde gösterilir.
           </p>
         </section>

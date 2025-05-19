@@ -1,12 +1,12 @@
 /* eslint-disable no-unused-vars */
-// eslint-disable-next-line no-unused-vars
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Menu, X, LogOut, User, Settings, Bell, Users, Check, X as XIcon, Home, History, Info, Brain } from 'lucide-react';
-import { getFriendRequests, acceptFriendRequest, rejectFriendRequest } from '../services/friendService';
+import { X, LogOut, User, Settings, Users, Home, History, Info } from 'lucide-react';
 import { connectSocket, onSocketEvent, offSocketEvent } from '../services/socketService';
 import { getUserInfo } from '../services/authService';
 import { getToken, removeToken } from '../utils/tokenHelper';
+import { getFriendRequests, acceptFriendRequest, rejectFriendRequest } from '../services/friendService';
+import FriendNotifications from './FriendNotifications';
 
 // JWT tokenden ID almayla ilgili yardımcı fonksiyon
 const getUserIdFromToken = () => {
@@ -29,20 +29,20 @@ const getUserIdFromToken = () => {
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [userEmail, setUserEmail] = useState('');
+  const [userName, setUserName] = useState('');
   const navigate = useNavigate();
   const [profileImage, setProfileImage] = useState('');
   const [friendRequests, setFriendRequests] = useState([]);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-    // SessionStorage'ı dinleyen fonksiyon
+  
+  // SessionStorage'ı dinleyen fonksiyon  
   const loadUserFromSessionStorage = () => {
     const userStr = sessionStorage.getItem('user');
     if (userStr) {
       try {
         const user = JSON.parse(userStr);
-        // Eğer email varsa onu kullan, yoksa username kullan
-        setUserEmail(user.email || user.username || 'Kullanıcı');
+        // Önce username kullan, yoksa email kullan
+        setUserName(user.username || user.email || 'Kullanıcı');
         // Profil fotoğrafını ayarla (eğer varsa)
         if (user.profileImage) {
           setProfileImage(user.profileImage);
@@ -53,10 +53,9 @@ const Header = () => {
         console.error('Kullanıcı bilgisi çözümlenirken hata:', error);
       }
     }
-  };
-  
-  // Arkadaşlık isteklerini yükle
-  const loadFriendRequests = async () => {
+  };  
+  // Arkadaşlık isteklerini yükle fonksiyonu useCallback ile memoize ediyoruz
+  const loadFriendRequests = useCallback(async () => {
     try {
       const response = await getFriendRequests();
       if (response.data && response.data.friendRequests) {
@@ -65,19 +64,21 @@ const Header = () => {
     } catch (error) {
       console.error('Arkadaşlık istekleri yüklenirken hata:', error);
     }
-  };
-
-  // WebSocket event handler
-  const handleSocketFriendRequest = (data) => {
+  }, []);
+  
+  // WebSocket event handler - useCallback kullanarak gereksiz yeniden renderları önlüyoruz
+  const handleSocketFriendRequest = useCallback((data) => {
     console.log('Yeni arkadaşlık isteği bildirimi:', data);
     loadFriendRequests(); // Yeni bir istek geldiğinde istekleri yeniden yükle
-  };  // Profil bilgilerini sunucudan yükle 
+  }, [loadFriendRequests]);  // loadFriendRequests dependecy olarak eklendi
+  
+  // Profil bilgilerini sunucudan yükle 
   const loadUserProfile = async () => {
     try {
       const response = await getUserInfo();
       if (response.data && response.data.user) {
         const user = response.data.user;
-        setUserEmail(user.email || user.username || 'Kullanıcı');
+        setUserName(user.username || user.email || 'Kullanıcı');
         
         // Profil fotoğrafını API'den al
         if (user.profileImage) {
@@ -108,9 +109,7 @@ const Header = () => {
     const interval = setInterval(loadFriendRequests, 60000);
     
     // Storage değişikliklerini dinle
-    window.addEventListener('storage', loadUserFromSessionStorage);
-    
-    // Component unmount olduğunda event listener'ları kaldır
+    window.addEventListener('storage', loadUserFromSessionStorage);    // Component unmount olduğunda event listener'ları kaldır
     return () => {
       window.removeEventListener('storage', loadUserFromSessionStorage);
       if (userId) {
@@ -118,7 +117,9 @@ const Header = () => {
       }
       clearInterval(interval);
     };
-  }, []);  // Çıkış yap
+  }, [handleSocketFriendRequest, loadFriendRequests]);  // dependencies added
+  
+  // Çıkış yap
   const handleLogout = () => {
     removeToken();
     sessionStorage.removeItem('user');
@@ -158,11 +159,10 @@ const Header = () => {
       setIsProcessing(false);
     }
   };
-
   // Kullanıcı adının baş harfini al (avatar için)
   const getInitial = () => {
-    if (!userEmail) return '?';
-    return userEmail.charAt(0).toUpperCase();
+    if (!userName) return '?';
+    return userName.charAt(0).toUpperCase();
   };
 
   return (
@@ -190,84 +190,13 @@ const Header = () => {
             <Link to="/about" className="hover:text-blue-200 font-medium flex items-center">
               <Info size={16} className="mr-1.5" /> Hakkında
             </Link>
-          </nav>{/* Kullanıcı Profili */}
-          <div className="hidden md:flex items-center space-x-4">
-            {/* Bildirim Butonu */}
-            <div className="relative">              <button 
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="p-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-md focus:outline-none focus:ring-2 focus:ring-blue-300 relative transition-all duration-200 flex items-center justify-center w-10 h-10"
-                title="Bildirimler"
-              >
-                <Bell size={18} />
-                {friendRequests.length > 0 && (
-                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full border-2 border-white">
-                    {friendRequests.length}
-                  </span>
-                )}
-              </button>
-                {/* Bildirimler Dropdown */}
-              {showNotifications && (
-                <div className="absolute right-0 mt-2 w-72 bg-white rounded-md shadow-lg py-1 z-10 text-gray-800">
-                  <div className="px-4 py-2 font-medium border-b border-gray-200">Bildirimler</div>
-                  
-                  {friendRequests.length > 0 ? (
-                    <>
-                      {friendRequests.map(request => (
-                        <div key={request._id} className="px-4 py-2 hover:bg-gray-50 border-b border-gray-100">
-                          <div className="flex items-center">
-                            {request.profileImage ? (
-                              <img 
-                                src={request.profileImage} 
-                                alt="Profil" 
-                                className="w-8 h-8 rounded-full mr-2"
-                              />
-                            ) : (
-                              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-2">
-                                <span className="text-blue-600 font-medium">
-                                  {(request.email || '?').charAt(0).toUpperCase()}
-                                </span>
-                              </div>
-                            )}
-                            <div className="flex-1">
-                              <p className="text-sm font-medium">
-                                {request.email}
-                              </p>
-                              <p className="text-xs text-gray-500">arkadaşlık isteği gönderdi</p>                            </div>
-                            <div className="flex space-x-2 ml-auto">
-                              <button 
-                                onClick={() => handleAcceptRequest(request._id)}
-                                disabled={isProcessing}
-                                className="p-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 shadow-sm transition-all duration-200 flex items-center justify-center w-8 h-8"
-                                title="Kabul Et"
-                              >
-                                <Check size={16} />
-                              </button>
-                              <button 
-                                onClick={() => handleRejectRequest(request._id)}
-                                disabled={isProcessing}
-                                className="p-1.5 bg-gray-200 text-gray-600 rounded-full hover:bg-gray-300 shadow-sm transition-all duration-200 flex items-center justify-center w-8 h-8"
-                                title="Reddet"
-                              >
-                                <XIcon size={16} />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </>
-                  ) : (
-                    <div className="px-4 py-3 text-sm text-gray-500">
-                      Bildirim bulunmuyor
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            
-            <div className="text-sm">{userEmail}</div>
+          </nav>{/* Kullanıcı Profili */}          <div className="hidden md:flex items-center space-x-4">
+            {/* Bildirim Butonu - FriendNotifications Komponenti */}
+            <FriendNotifications />
+              <div className="text-md mr-2">{userName}</div>
             <div className="relative group">
               <button 
-                className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-blue-500 focus:ring-white"
+                className="w-12 h-12 rounded-full overflow-hidden flex items-center justify-center hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-blue-500 focus:ring-white"
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
               >
                 {profileImage ? (
@@ -345,9 +274,8 @@ const Header = () => {
                     <span className="font-semibold text-white">{getInitial()}</span>
                   </div>
                 )}
-              </div>
-              <div className="ml-3">
-                <div className="text-base font-medium">{userEmail}</div>
+              </div>              <div className="">
+                <div className="text-base font-medium">{userName}</div>
               </div>
             </div><div className="mt-3 px-2 space-y-1">
               <Link to="/profile" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-blue-600 flex items-center">

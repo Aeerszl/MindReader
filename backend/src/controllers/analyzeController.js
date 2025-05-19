@@ -377,9 +377,7 @@ exports.analyzeText = async (req, res) => {
       textToAnalyze = text;
     }    // Duygu analizi yap
     const sentiment = await analyzeSentiment(textToAnalyze);
-    console.log('Duygu analizi sonucu:', sentiment);
-
-    // Analizi MongoDB'ye kaydet
+    console.log('Duygu analizi sonucu:', sentiment);    // Analizi MongoDB'ye kaydet
     try {
       // Önce kullanıcıyı kontrol et
       const user = await User.findById(userId);
@@ -387,6 +385,13 @@ exports.analyzeText = async (req, res) => {
       if (!user) {
         return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
       }
+      
+      // Duygu durumunu belirle
+      const sentimentLabel = sentiment.positive > sentiment.negative && sentiment.positive > sentiment.neutral 
+        ? 'POSITIVE' 
+        : sentiment.negative > sentiment.positive && sentiment.negative > sentiment.neutral 
+          ? 'NEGATIVE' 
+          : 'NEUTRAL';
       
       // Analysis koleksiyonuna tam verilerle kaydet
       const newAnalysis = new Analysis({
@@ -396,11 +401,7 @@ exports.analyzeText = async (req, res) => {
         language: 'auto', // Varsayılan olarak otomatik
         sentiment: {
           score: Math.max(sentiment.positive, sentiment.negative, sentiment.neutral),
-          label: sentiment.positive > sentiment.negative && sentiment.positive > sentiment.neutral 
-            ? 'POSITIVE' 
-            : sentiment.negative > sentiment.positive && sentiment.negative > sentiment.neutral 
-              ? 'NEGATIVE' 
-              : 'NEUTRAL',
+          label: sentimentLabel,
           positive: sentiment.positive,
           negative: sentiment.negative,
           neutral: sentiment.neutral
@@ -411,6 +412,39 @@ exports.analyzeText = async (req, res) => {
       // MongoDB'ye kaydet
       await newAnalysis.save();
       console.log('Analiz MongoDB Analysis koleksiyonuna kaydedildi. ID:', newAnalysis._id);
+      
+      // Eğer duygu durumu NEGATİF ise, arkadaşlarına bildirim gönder
+      if (sentimentLabel === 'NEGATIVE' && sentiment.negative > 0.6) { // Negatif duygu skoru yüksekse
+        try {
+          const Notification = require('../models/Notification');
+          
+          // Kullanıcının tüm arkadaşlarını bul
+          const userWithFriends = await User.findById(userId).select('friends');
+          
+          if (userWithFriends && userWithFriends.friends.length > 0) {
+            console.log(`${userWithFriends.friends.length} arkadaşa negatif duygu durumu bildirimi gönderiliyor`);
+            
+            // Her arkadaşa bildirim oluştur
+            const notifications = userWithFriends.friends.map(friendId => {
+              return {
+                recipient: friendId,
+                sender: userId,
+                type: 'MOOD_NEGATIVE',
+                extraData: { 
+                  moodValue: sentiment.negative,
+                  text: text.length > 50 ? text.substring(0, 50) + '...' : text 
+                }
+              };
+            });
+            
+            // Bildirimleri toplu olarak kaydet
+            await Notification.insertMany(notifications);
+            console.log('Negatif duygu durumu bildirimleri gönderildi');
+          }
+        } catch (notifError) {
+          console.error("Duygu durumu bildirimi gönderilirken hata oluştu:", notifError);
+        }
+      }
       
     } catch (dbError) {
       console.error("Veritabanı kayıt hatası:", dbError.message);
